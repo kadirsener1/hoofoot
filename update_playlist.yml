@@ -1,0 +1,76 @@
+# .github/workflows/update_playlist.yml
+name: Update HooFoot IPTV Playlist
+
+on:
+  # Her 6 saatte bir otomatik çalıştır
+  schedule:
+    - cron: '0 */6 * * *'
+
+  # Manuel tetikleme
+  workflow_dispatch:
+
+  # Push ile tetikleme
+  push:
+    branches:
+      - main
+    paths:
+      - 'hoofoot_scraper.py'
+
+jobs:
+  update-playlist:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    permissions:
+      contents: write
+
+    steps:
+      - name: 📥 Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: 🐍 Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+
+      - name: 📦 Install Dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: 🔄 Run Scraper
+        run: |
+          python hoofoot_scraper.py
+        env:
+          PYTHONUNBUFFERED: 1
+
+      - name: 📊 Show Results
+        run: |
+          echo "=== Playlist Info ==="
+          if [ -f hoofoot_playlist.m3u ]; then
+            echo "File size: $(wc -c < hoofoot_playlist.m3u) bytes"
+            echo "Total channels: $(grep -c '^#EXTINF' hoofoot_playlist.m3u || echo 0)"
+            echo ""
+            echo "=== First 20 lines ==="
+            head -20 hoofoot_playlist.m3u
+          else
+            echo "❌ Playlist file not found!"
+            exit 1
+          fi
+
+      - name: 📤 Commit and Push
+        run: |
+          git config --local user.email "github-actions[bot]@users.noreply.github.com"
+          git config --local user.name "github-actions[bot]"
+
+          TIMESTAMP=$(date -u '+%Y-%m-%d %H:%M UTC')
+          CHANNEL_COUNT=$(grep -c '^#EXTINF' hoofoot_playlist.m3u 2>/dev/null || echo 0)
+
+          git add hoofoot_playlist.m3u
+          git add hoofoot_playlist.json 2>/dev/null || true
+
+          git diff --staged --quiet || \
+          git commit -m "🔄 Playlist güncellendi: ${CHANNEL_COUNT} kanal (${TIMESTAMP})"
+
+          git push
